@@ -1,0 +1,4 @@
+## liif ignore file ##
+
+*.log
+data/
