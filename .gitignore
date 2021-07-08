@@ -2,3 +2,6 @@
 
 *.log
 data/
+*.ipynb_checkpoints
+__pycache__
+images/
