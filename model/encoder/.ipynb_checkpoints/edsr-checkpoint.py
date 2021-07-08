@@ -36,7 +36,7 @@ class ResBlock(nn.Module):
 # two types of encoder: EDSR-baseline and RDN (no upsampling)
 # mean shift is not used
 class Encoder(nn.Module):
-      def __init__(self, depth, channel, kernel_size,
+    def __init__(self, depth, channel, kernel_size,
                    res_scale, img_scale, use_upsampling):
         super(Encoder).__init__()
 
