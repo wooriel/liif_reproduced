@@ -44,6 +44,20 @@ def crop_img(img, lt, sz, mult): # img
     return img.crop((left, top, right, bottom))
 
 
+def augment_tensor(t, flip):
+    trans = ''
+    if flip[0]:
+        trans += 'lr '
+        t = t.fliplr()
+    if flip[1]:
+        trans += 'hb '
+        t = t.flipud()
+    if flip[2]: # Use ROTATE_90 instead?
+        trans += 'trans '
+        t = t.transpose(0, 1)
+    return t, trans
+
+
 def augment_img(img, flip):
     trans = ''
     if flip[0]:

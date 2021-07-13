@@ -53,27 +53,6 @@ sample_q = 2304
 # this transform is applicable to lr of pairs
 # random crop of hr would be resize*scale or lr_image*scale
 # test - no resize variable, no random crop for lr_image
-trans_train = transforms.Compose(
-    [# transforms.ToTensor(),
-     transforms.RandomCrop(resize),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-     transforms.RandomHorizontalFlip(),
-     transforms.RandomVerticalFlip(),
-    #  transforms.RandomRotation([-90, 90]),
-     ])
-
-trans_val = transforms.Compose(
-    [# transforms.ToTensor(), <- 가급적이면 나중에
-     transforms.RandomCrop(resize),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ])
-
-# only has data normalization
-trans_test = transforms.Compose(
-    [# transforms.ToTensor(),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
-
 #--------------------
 
 
@@ -126,9 +105,24 @@ def load_div2k(repeat, scale=None):
     return images
 
 
+def latent_coord(img_size, ran=[-1, 1], flatten=True):
+    w_x = (ran[1] - ran[0])/ img_size[0]
+    w_y = (ran[1] - ran[0])/ img_size[1]
+    center_x = w_x / 2
+    center_y = w_y / 2
+    coord_x = torch.arange(ran[0]+center_x, ran[1]+center_x, w_x)
+    coord_y = torch.arange(ran[0]+center_y, ran[1]+center_y, w_y)
+    dup_x = coord_x.repeat(img_size[1], 1)
+    dup_y = coord_y.repeat(img_size[0], 1).transpose(0, 1).contiguous()
+    latent = torch.stack([dup_x, dup_y], dim=2) # coord of row first
+    code_latent = latent.transpose(0, 1).contiguous() # coord of column first
+    if flatten:
+        code_latent = code_latent.view(ran[0]*ran[1], 2)
+    return code_latent 
+
 
 class DIV2K(Dataset):
-    def __init__(self, train_val_test, scale=None): #, transform
+    def __init__(self, train_val_test, scale=None, min_max=None, sample_q=None):
         super(DIV2K, self).__init__()
 
         # train_val_test is string -> assign repeat value
@@ -145,6 +139,8 @@ class DIV2K(Dataset):
             raise Exception("Not a valid option, input should be \
                 among \'train\', \'validation\', \'test\'")
         self.scale = scale
+        self.min_max = min_max
+        self.sample_q = sample_q
         self.images = load_div2k(self.repeat)
         if scale != None: # use pair of images to downsample
             self.lr_img = load_div2k(self.repeat, scale) # image array
@@ -153,10 +149,84 @@ class DIV2K(Dataset):
     def __getitem__(self, idx):
         hr_img = self.images[idx % len(self.images)]
         if self.scale == None:
-            # call downsampling function
+            # call downsampling function (implicit)
+            if self.status in ['train', 'validation']:
+                scale = torch.rand([1]).mul(self.min_max).item()
+                leftTop = D.rand_left_top(hr_img.size, resize) # low-res
+                # size=(height, width) for Resize: resize var should be flipped
+                lr_resize = transforms.Resize((resize[1], resize[0]),                                       interpolation=transforms.InterpolationMode.BICUBIC)
+                lr_crop = lr_resize(hr_img)
+                hr_crop = D.crop_img(hr_img, leftTop, resize, scale)
+            else: # test - no resize variable exists
+                scale = self.min_max
+                height = math.floor(img.shape[-2] / scale + 1e-9)
+                width = math.floor(img.shape[-1] / scale + 1e-9)
+                # size=(height, width) for Resize
+                lr_resize = transforms.Resize((height, width),                                             interpolation=transforms.InterpolationMode.BICUBIC)
+                lr_crop = lr_resize(hr_img)
+                hr_crop = D.crop_img(hr_img, (0, 0), (width, height), scale)
+            
+            # Convert to torch
+            to_tensor = transforms.ToTensor()
+            lr_crop = to_tensor(lr_crop)
+            hr_crop = to_tensor(hr_crop)
+
+            # Data Augmentation
+            if self.status == 'train':
+                flips = D.is_flip()
+                lr_crop, _ = D.augment_tensor(lr_crop, flips)
+                hr_crop, _ = D.augment_tensor(hr_crop, flips)
+
+            # Sample HR: get latent coordinate and RGB
+            hr_coord = latent_coord(hr_crop.size())
+            hr_rgb = hr_crop.view(3, -1).transpose(0, 1)
+
+            # sample_q: only for train / ablation, not during test
+            # 2304 = 48*48...!
+            if self.status in ['train', 'validation']:
+                sample_lst = np.random.choice(
+                    len(hr_coord), sample_q, replace=False
+                )
+                hr_coord = hr_coord[sample_lst]
+                hr_rgb = hr_rgb[sample_lst]
+
+            return crop_lr, hr_coord, cell, hr_rgb
+        
         else:
             lr_img = self.lr_img[idx % len(self.lr_img)]
-            # call downsampling function
+            # call downsampling function (paired)
+            # test / scale does not really change here
+            hr_crop, lr_crop = hr_img, lr_img
+            if self.status in ['train', 'validation']:
+                # Crop Image
+                leftTop = D.rand_left_top(lr_img.size, resize)
+                lr_crop = D.crop_img(lr_img, leftTop, resize, 1)
+                hr_crop = D.crop_img(hr_img, leftTop, resize, self.scale)
+
+            # Convert to torch
+            to_tensor = transforms.ToTensor()
+            lr_crop = to_tensor(lr_crop)
+            hr_crop = to_tensor(hr_crop)
+
+            # Data Augmentation
+            if self.status == 'train':
+                flips = D.is_flip()
+                lr_crop, _ = D.augment_tensor(lr_crop, flips)
+                hr_crop, _ = D.augment_tensor(hr_crop, flips)
+
+            # Sample HR: get latent coordinate and RGB
+            hr_coord = latent_coord(hr_crop.size())
+            hr_rgb = hr_crop.view(3, -1).transpose(0, 1)
+            
+            # div2k paired does not do sample
+            assert sample_q != None
+
+            # one cell = 4 latent vector <- used in local ensemble
+            cell = torch.ones(hr_coord.size()).mul(2)
+            size = torch.Tensor([hr_crop.size(0), hr_crop.size(1)])
+            cell.div(size)
+
+            return crop_lr, hr_coord, cell, hr_rgb
             
 
     def __len__(self):
