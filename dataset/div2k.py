@@ -154,7 +154,7 @@ class DIV2K(Dataset):
                 scale = torch.rand([1]).mul(self.min_max).item()
                 leftTop = D.rand_left_top(hr_img.size, resize) # low-res
                 # size=(height, width) for Resize: resize var should be flipped
-                lr_resize = transforms.Resize((resize[1], resize[0]),                                       interpolation=transforms.InterpolationMode.BICUBIC)
+                lr_resize = transforms.Resize((resize[1], resize[0]), interpolation=transforms.InterpolationMode.BICUBIC)
                 lr_crop = lr_resize(hr_img)
                 hr_crop = D.crop_img(hr_img, leftTop, resize, scale)
             else: # test - no resize variable exists
@@ -162,7 +162,7 @@ class DIV2K(Dataset):
                 height = math.floor(img.shape[-2] / scale + 1e-9)
                 width = math.floor(img.shape[-1] / scale + 1e-9)
                 # size=(height, width) for Resize
-                lr_resize = transforms.Resize((height, width),                                             interpolation=transforms.InterpolationMode.BICUBIC)
+                lr_resize = transforms.Resize((height, width), interpolation=transforms.InterpolationMode.BICUBIC)
                 lr_crop = lr_resize(hr_img)
                 hr_crop = D.crop_img(hr_img, (0, 0), (width, height), scale)
             

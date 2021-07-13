@@ -20,10 +20,10 @@ class ResBlock(nn.Module):
 
         self.block = nn.Sequential(
             nn.Conv2d(in_channels=self.c, out_channels=self.c, kernel_size=self.k,
-                      stride=1, padding=self.k>>1, bias=self.bias),
+                        stride=1, padding=self.k>>1, bias=self.bias),
             nn.ReLU(),
             nn.Conv2d(in_channels=self.c, out_channels=self.c, kernel_size=self.k,
-                      stride=1, padding=self.k>>1, bias=self.bias)
+                        stride=1, padding=self.k>>1, bias=self.bias)
         )
 
     def forward(self, x):
@@ -92,9 +92,11 @@ class Encoder(nn.Module):
             x = self.blocks[i](x)
         x += ident
 
-        if self.upsampling:
+        if self.upsample:
             for j, name in enumerate(self.up):
                 x = self.up[i](x)
+            x = self.convl(x)
+            
         return x
 
     # def load_state_dict(self)
