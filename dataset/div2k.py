@@ -35,7 +35,7 @@ r_test = 1
 first_k = 10
 
 # Downsampling
-resize = 48
+resize = (48, 48)
 sample_q = 2304
 
 #   (implicit-downsampled)
@@ -199,7 +199,7 @@ class DIV2K(Dataset):
             hr_crop, lr_crop = hr_img, lr_img
             if self.status in ['train', 'validation']:
                 # Crop Image
-                leftTop = D.rand_left_top(lr_img.size, resize)
+                leftTop = D.rand_left_top(lr_img.size(), resize)
                 lr_crop = D.crop_img(lr_img, leftTop, resize, 1)
                 hr_crop = D.crop_img(hr_img, leftTop, resize, self.scale)
 

@@ -19,8 +19,8 @@ def rand_left_top(img_size, crop_size):
     iw, ih = img_size
     cw = crop_size[0]
     ch = crop_size[1]
-    left = torch.randint(0, iw - cw + 1, size=(1, )).item()
-    top = torch.randint(0, ih - ch + 1, size=(1, )).item()
+    left = torch.randint(0, iw - cw, size=(1, )).item()
+    top = torch.randint(0, ih - ch, size=(1, )).item()
     return left, top
 
 
@@ -31,13 +31,13 @@ def crop_img(img, lt, sz, mult): # img
     # mult: scale (int)
 
     # lt
-    left = lt[0] * mult
-    top = lt[1] * mult
-    right = (lt[0] + sz[0]) * mult # W + w
-    bottom = (lt[1] + sz[1]) * mult # H + h
+    left = round(lt[0] * mult)
+    top = round(lt[1] * mult)
+    right = round((lt[0] + sz[0]) * mult) # W + w
+    bottom = round((lt[1] + sz[1]) * mult) # H + h
     # print("{}, {}, {}, {}".format(left, top, right, bottom))
 
-    w, h = img.size
+    w, h = img.size()
 #     print("{}, {}".format(w, h))
     assert right < w and bottom < h,\
         "Coordinate and/or scale out of range"
@@ -54,7 +54,8 @@ def augment_tensor(t, flip):
         t = t.flipud()
     if flip[2]: # Use ROTATE_90 instead?
         trans += 'trans '
-        t = t.transpose(0, 1)
+        # I fixed transpose(0, 1) to transpose(1, 2)
+        t = t.transpose(1, 2)
     return t, trans
 
 

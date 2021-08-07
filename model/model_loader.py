@@ -19,13 +19,13 @@ def load_model(type, encod, decod=None):
         if encod_args is not None:
             # check for the arguments
             s = encod_args.get('scale', 1)
-            no_up = encod_args.get('upsample', True)
+            no_up = encod_args.get('no_upsample', True)
             # directly call?
             encoder_fun = edsr.EDSR(depth=resblocks, channel=features, kernel_size=3,
-                        res_scale=res_s, img_scale=s, use_upsampling=no_up)
+                        res_scale=res_s, img_scale=s, no_upsampling=no_up)
         else:
             encoder_fun = edsr.EDSR(depth=resblocks, channel=features, kernel_size=3,
-                        res_scale=res_s, img_scale=s, use_upsampling=no_up)
+                        res_scale=res_s, img_scale=s, no_upsampling=no_up)
             # print(summary([16, 3, 48, 48], encoder_fun))
             print(str(encoder_fun))
     elif encod_type == 'rdn':

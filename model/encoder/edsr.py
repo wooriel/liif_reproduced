@@ -37,7 +37,7 @@ class ResBlock(nn.Module):
 # mean shift is not used
 class Encoder(nn.Module):
     def __init__(self, depth, channel, kernel_size,
-                   res_scale, img_scale, use_upsampling):
+                   res_scale, img_scale, no_upsampling):
         super(Encoder).__init__()
 
         self.d = depth
@@ -45,7 +45,7 @@ class Encoder(nn.Module):
         self.k = kernel_size
         self.res_s = res_scale
         self.img_s = img_scale
-        self.upsample = use_upsampling
+        self.no_upsample = no_upsampling
 
         # First Convolution Layer
         self.conv = nn.Conv2d(in_channels=3, out_channels=self.c,
@@ -53,7 +53,7 @@ class Encoder(nn.Module):
 
         # ResNet Layers
         self.blocks = nn.ModuleList()
-        for i in ramge(self.d):
+        for i in range(self.d):
             self.blocks.append(ResBlock(self.c, self.k, self.res_s))
 
         # Original Upsampling Layer(s):
@@ -75,7 +75,7 @@ class Encoder(nn.Module):
                                      kernel_size=3, padding=1))
             self.up.append(nn.PixelShuffle(3))
             # self.up.append(nn.Upsample(scale_factor=3, mode='bicubic'))
-        if scale != 1:
+        if img_scale != 1:
             raise Exception("Not available scale")
 
         # Last Convolution Layer (Upsample)
@@ -92,7 +92,7 @@ class Encoder(nn.Module):
             x = self.blocks[i](x)
         x += ident
 
-        if self.upsample:
+        if self.no_upsample == False:
             for j, name in enumerate(self.up):
                 x = self.up[i](x)
             x = self.convl(x)
