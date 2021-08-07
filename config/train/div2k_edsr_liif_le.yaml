@@ -1,0 +1,22 @@
+datasets:
+  type: div2k
+
+  dataset:
+    status: train
+    args:
+      min_max: 4
+      
+  dataset2:
+    status: validation
+    args:
+      min_max: 4
+
+model:
+  type: liif
+  args: 
+    encoder: 
+      type: edsr
+      args: 
+        no_upsample: True
+    mlp_decoder: True
+    ablation: ['no_le']

@@ -1,0 +1,19 @@
+datasets:
+  type: div2k
+
+  dataset:
+    status: train
+    args:
+      scale: 2
+      
+  dataset2:
+    status: validation
+    args:
+      scale: 2
+
+model:
+  type: baseline
+  encoder: 
+    type: edsr
+    args:
+      scale: 2

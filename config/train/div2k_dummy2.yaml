@@ -1,0 +1,15 @@
+datasets:
+  type: div2k
+
+  dataset: 
+    status: test
+    args: 
+
+model: 
+  type: metasr
+  encoder: 
+    type: rdn
+    args: 
+      no_upsample: True
+  mlp_decoder: 
+    out_dim: 3
