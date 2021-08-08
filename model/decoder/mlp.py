@@ -2,6 +2,25 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# borrowed code to check layers
+def hook_fn(m, i, o):
+
+    for grad in i:
+        if grad is not None and torch.any(torch.isnan(grad)):
+            print(f"{m} input----")
+            print(grad)
+            if isinstance(m, nn.BatchNorm1d):
+                print("running_mean:", m.running_mean,"var:", m.running_var, "b:", m.num_batches_tracked)
+
+    for grad in o:
+        if grad is not None and torch.any(torch.isnan(grad)):
+            for p in m.parameters():
+                print(p.dtype)
+            print("output---")
+            print(grad)
+            if isinstance(m, nn.BatchNorm1d):
+                print("running_mean:", m.running_mean,"var:", m.running_var, "b:", m.num_batches_tracked)
+
 class MLP(nn.Module):
     def __init__(self, liif, use_le, dims=[256, 256, 256, 256]): # channel, areas, use_le
         super().__init__()
@@ -82,7 +101,9 @@ class MLP(nn.Module):
         # x = x.view(-1, x_size[-1])
 
         for i0, layer in enumerate(self.layers):
+            input_x00 = x00
             x00 = layer(x00)
+            h = hook_fn(layer, input_x00, x00)
         x00 = x00.view(*x_size[:-2], -1)
 
         for i1, layer2 in enumerate(self.layers2):

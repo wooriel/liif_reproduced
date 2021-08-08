@@ -2,10 +2,12 @@ import torch
 import torch.nn as nn
 
 from model.encoder import edsr
+from model.encoder import liif
 
 from model.decoder import baseline
+from model.decoder import mlp
 
-def load_model(type, encod, decod=None):
+def load_model(type, encod, decod, ablation):
     '''encoder'''
     encod_type = encod.get('type')
     encod_args = encod.get('args', None)
@@ -33,10 +35,20 @@ def load_model(type, encod, decod=None):
         
     '''decoder'''
     if type == 'baseline':
-        print(str(baseline.Baseline(encoder_fun)))
+        # print(str(baseline.Baseline(encoder_fun)))
         return baseline.Baseline(encoder_fun)
     elif type == 'liif':
-        return
+        # if no_fu/no_le/no_cd exist, use_fu flag will be False
+        use_fu = 'no_fu' not in ablation
+        use_le = 'no_le' not in ablation
+        use_cd = 'no_cd' not in ablation
+        cont_rep = liif.LIIF(encoder_fun, use_fu, use_le, use_cd)
+        if decod:
+            if decod is not True:
+                hidden_lst = decod.get('hidden_lst', None)
+                return mlp.MLP(cont_rep, use_le, hidden_lst)
+            return mlp.MLP(cont_rep, use_le)
+        return cont_rep
     elif type == 'metasr':
         return
     else:
@@ -49,9 +61,11 @@ def read_yaml(yaml_file):
     # yaml_file = yaml.load(f, Loader=yaml.FullLoader)
     model = yaml_file['model']
     ty = model['type']
-    encoder = model['encoder']
-    decoder = model.get('mlp_decoder', None)
+    args = model['args']
+    encoder = args['encoder']
+    decoder = args.get('mlp_decoder', False)
+    ablation = args.get('ablation', [])
     # print(encoder)
     # print(decoder)
-    model = load_model(ty, encoder, decoder)
+    model = load_model(ty, encoder, decoder, ablation)
     return model

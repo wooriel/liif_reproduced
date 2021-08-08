@@ -1,10 +1,13 @@
 from PIL import Image
 import os
 from enum import Enum
-import downsample as D
+import dataset.downsample as D
+import math
+import numpy as np
+from tqdm import tqdm
 
 import torch
-import torch.utils.data.DataSet as DataSet
+from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 
 # <Configurations>---
@@ -60,13 +63,13 @@ sample_q = 2304
 def load_div2k(repeat, scale=None):
     data_dir = ''
     sub_name = ''
-    start = 800, end=900 # default: val/test
+    start, end = 800, 900 # default: val/test
     
     if scale == None:
         if repeat == Dt.TR.value:
             # load HR train
             data_dir = os.path.join(root, tr_hr)
-            start, end = 0, 800
+            start, end = 0, 1 # 800
         else:
             # load HR valid
             data_dir = os.path.join(root, val_hr)
@@ -76,48 +79,67 @@ def load_div2k(repeat, scale=None):
         assert scale in (2, 3, 4), "The value of \'scale\' should be one of 2, 3, 4"
         sub_name = ''.join(['x', str(scale)])
         if repeat == Dt.TR.value:
-            start, end = 0, 800
-            if self.scale == 2:
+            start, end = 0, 1 # 800
+            if scale == 2:
                 data_dir = os.path.join(root, tr_x2)
-            elif self.scale == 3:
+            elif scale == 3:
                 data_dir = os.path.join(root, tr_x3)
-            else: # self.scale == 4
+            else: # scale == 4
                 data_dir = os.path.join(root, tr_x4)
         else:
-            if self.scale == 2:
+            if scale == 2:
                 data_dir = os.path.join(root, val_x2)
-            elif self.scale == 3:
+            elif scale == 3:
                 data_dir = os.path.join(root, val_x3)
-            else: # self.scale == 4:
+            else: # scale == 4:
                 data_dir = os.path.join(root, val_x4)
             if repeat == Dt.VAL.value:
                 end = start + first_k
 
     images = []
-    for i in range(start+1, end+1, 1):
-        strnum = "%4d".format(i)
+    for i in tqdm(range(start+1, end+1, 1)):
+        strnum = "{:04d}".format(i)
         img_name = ''.join([strnum, sub_name, '.png'])
-        print(img_name)
+        # print(img_name)
         fname = os.path.join(data_dir, sub_name.upper(), img_name)
-        print(fname)
-        images.append(transforms.ToTensor(Image.open(fname).convert('RGB')))
+        # print(fname)
+        images.append(transforms.ToTensor()(Image.open(fname).convert('RGB')))
 
     return images
 
+# old version
+# def latent_coord(img_size, ran=[-1, 1], flatten=True):
+#     w_x = (ran[1] - ran[0])/ img_size[0]
+#     w_y = (ran[1] - ran[0])/ img_size[1]
+#     center_x = w_x / 2
+#     center_y = w_y / 2
+#     coord_x = torch.arange(ran[0]+center_x, ran[1]+center_x, w_x)
+#     coord_y = torch.arange(ran[0]+center_y, ran[1]+center_y, w_y)
+#     dup_x = coord_x.repeat(img_size[1], 1)
+#     dup_y = coord_y.repeat(img_size[0], 1).transpose(0, 1).contiguous()
+#     latent = torch.stack([dup_y, dup_x], dim=2) # coord of row first
+#     code_latent = latent.transpose(0, 1).contiguous() # coord of column first
+#     if flatten:
+#         code_latent = code_latent.view(ran[0]*ran[1], 2)
+#     return code_latent 
 
-def latent_coord(img_size, ran=[-1, 1], flatten=True):
-    w_x = (ran[1] - ran[0])/ img_size[0]
-    w_y = (ran[1] - ran[0])/ img_size[1]
+def latent_coord(total_size, ran=[-1, 1], flatten=True):
+    img_size = total_size[-2:]
+    w_x = (ran[1] - ran[0])/ img_size[1]
+    w_y = (ran[1] - ran[0])/ img_size[0]
     center_x = w_x / 2
     center_y = w_y / 2
-    coord_x = torch.arange(ran[0]+center_x, ran[1]+center_x, w_x)
-    coord_y = torch.arange(ran[0]+center_y, ran[1]+center_y, w_y)
-    dup_x = coord_x.repeat(img_size[1], 1)
-    dup_y = coord_y.repeat(img_size[0], 1).transpose(0, 1).contiguous()
-    latent = torch.stack([dup_x, dup_y], dim=2) # coord of row first
-    code_latent = latent.transpose(0, 1).contiguous() # coord of column first
+    coord_x = torch.arange(ran[0]+center_x, ran[1], w_x)
+    coord_y = torch.arange(ran[0]+center_y, ran[1], w_y)
+    dup_x = coord_x.repeat(img_size[0], 1) # repeat w coord as number of h
+    dup_y = coord_y.repeat(img_size[1], 1).transpose(0, 1).contiguous() # repeat h coord as number of w
+    latent = torch.stack([dup_x, dup_y], dim=2) # coord of column first (h, w)
+    code_latent = latent.transpose(0, 1).contiguous() # coord of row first (h, w)
+    if img_size != total_size: # B C H W -> B H W / I just leave as B C H W
+        code_latent = code_latent.repeat((*total_size[:-2], 1, 1, 1))
     if flatten:
-        code_latent = code_latent.view(ran[0]*ran[1], 2)
+        code_latent = code_latent.view(*total_size[:-3], ran[0]*ran[1], 2)
+        code_latent_size = code_latent.size()
     return code_latent 
 
 
@@ -151,46 +173,56 @@ class DIV2K(Dataset):
         if self.scale == None:
             # call downsampling function (implicit)
             if self.status in ['train', 'validation']:
-                scale = torch.rand([1]).mul(self.min_max).item()
-                leftTop = D.rand_left_top(hr_img.size, resize) # low-res
+                scale = torch.rand([1]).mul(self.min_max-1).add(1).item()
+                end_limit = (round(resize[0] * scale), round(resize[1] * scale))
+                leftTop = D.rand_left_top(hr_img.size()[-2:], end_limit) # low-res
                 # size=(height, width) for Resize: resize var should be flipped
-                lr_resize = transforms.Resize((resize[1], resize[0]), interpolation=transforms.InterpolationMode.BICUBIC)
-                lr_crop = lr_resize(hr_img)
-                hr_crop = D.crop_img(hr_img, leftTop, resize, scale)
+                # cut hr first, then resize lr from there
+                hr_crop = D.crop_img(hr_img, leftTop, end_limit, 1) # 
+                lr_resize = transforms.Resize(resize, interpolation=transforms.InterpolationMode.BICUBIC)
+                lr_crop = lr_resize(hr_crop)
             else: # test - no resize variable exists
                 scale = self.min_max
-                height = math.floor(img.shape[-2] / scale + 1e-9)
-                width = math.floor(img.shape[-1] / scale + 1e-9)
+                height = math.floor(hr_img.shape[-2] / scale + 1e-9) # img -> hr_img
+                width = math.floor(hr_img.shape[-1] / scale + 1e-9)
                 # size=(height, width) for Resize
                 lr_resize = transforms.Resize((height, width), interpolation=transforms.InterpolationMode.BICUBIC)
                 lr_crop = lr_resize(hr_img)
-                hr_crop = D.crop_img(hr_img, (0, 0), (width, height), scale)
+                hr_crop = D.crop_img(hr_img, (0, 0), (width, height), scale) # same as itself
             
             # Convert to torch
-            to_tensor = transforms.ToTensor()
-            lr_crop = to_tensor(lr_crop)
-            hr_crop = to_tensor(hr_crop)
+            # to_tensor = transforms.ToTensor()
+            # lr_crop = to_tensor(lr_crop)
+            # hr_crop = to_tensor(hr_crop)
 
             # Data Augmentation
             if self.status == 'train':
                 flips = D.is_flip()
                 lr_crop, _ = D.augment_tensor(lr_crop, flips)
                 hr_crop, _ = D.augment_tensor(hr_crop, flips)
+            hr_crop = hr_crop.contiguous() # should be applied to validation as well
 
             # Sample HR: get latent coordinate and RGB
-            hr_coord = latent_coord(hr_crop.size())
+            hr_coord = latent_coord(hr_crop.size()[-2:])
+            hr_crop_sz = hr_crop.size()
             hr_rgb = hr_crop.view(3, -1).transpose(0, 1)
 
             # sample_q: only for train / ablation, not during test
             # 2304 = 48*48...!
             if self.status in ['train', 'validation']:
+                hr_len = len(hr_coord)
                 sample_lst = np.random.choice(
                     len(hr_coord), sample_q, replace=False
                 )
                 hr_coord = hr_coord[sample_lst]
                 hr_rgb = hr_rgb[sample_lst]
 
-            return crop_lr, hr_coord, cell, hr_rgb
+            # one cell = 4 latent vector <- used in local ensemble
+            cell = torch.ones(hr_coord.size()).mul(2)
+            size = torch.Tensor([hr_crop.size(0), hr_crop.size(1)])
+            cell.div(size)
+
+            return lr_crop, hr_coord, cell, hr_rgb
         
         else:
             lr_img = self.lr_img[idx % len(self.lr_img)]
@@ -198,24 +230,25 @@ class DIV2K(Dataset):
             # test / scale does not really change here
             hr_crop, lr_crop = hr_img, lr_img
             if self.status in ['train', 'validation']:
-                # Crop Image
-                leftTop = D.rand_left_top(lr_img.size(), resize)
+                # Crop Image <- in tensor form
+                leftTop = D.rand_left_top(lr_img.size()[-2:], resize)
                 lr_crop = D.crop_img(lr_img, leftTop, resize, 1)
                 hr_crop = D.crop_img(hr_img, leftTop, resize, self.scale)
 
             # Convert to torch
-            to_tensor = transforms.ToTensor()
-            lr_crop = to_tensor(lr_crop)
-            hr_crop = to_tensor(hr_crop)
+            # to_tensor = transforms.ToTensor()
+            # lr_crop = to_tensor(lr_crop)
+            # hr_crop = to_tensor(hr_crop)
 
             # Data Augmentation
             if self.status == 'train':
                 flips = D.is_flip()
                 lr_crop, _ = D.augment_tensor(lr_crop, flips)
                 hr_crop, _ = D.augment_tensor(hr_crop, flips)
+            hr_crop = hr_crop.contiguous() # should be applied to validation as well
 
             # Sample HR: get latent coordinate and RGB
-            hr_coord = latent_coord(hr_crop.size())
+            hr_coord = latent_coord(hr_crop.size()[-2:])
             hr_rgb = hr_crop.view(3, -1).transpose(0, 1)
             
             # div2k paired does not do sample
@@ -226,7 +259,7 @@ class DIV2K(Dataset):
             size = torch.Tensor([hr_crop.size(0), hr_crop.size(1)])
             cell.div(size)
 
-            return crop_lr, hr_coord, cell, hr_rgb
+            return lr_crop, hr_coord, cell, hr_rgb
             
 
     def __len__(self):
