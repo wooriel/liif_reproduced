@@ -21,7 +21,7 @@ def load_model(type, encod, decod, ablation):
         if encod_args is not None:
             # check for the arguments
             s = encod_args.get('scale', 1)
-            no_up = encod_args.get('no_upsample', True)
+            no_up = encod_args.get('no_upsample', False)
             # directly call?
             encoder_fun = edsr.EDSR(depth=resblocks, channel=features, kernel_size=3,
                         res_scale=res_s, img_scale=s, no_upsampling=no_up)

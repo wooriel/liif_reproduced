@@ -22,12 +22,20 @@ class Dt(Enum): # datatype
 root = os.path.join(os.getcwd(), "data", "div2k")
 tr_hr = "DIV2K_train_HR"
 val_hr = "DIV2K_valid_HR"
-tr_x2 = os.path.join("DIV2K_train_LR_bicubic", "X2")
-tr_x3 = os.path.join("DIV2K_train_LR_bicubic-2", "X3")
-tr_x4 = os.path.join("DIV2K_train_LR_bicubic-3", "X4")
-val_x2 = os.path.join("DIV2K_valid_LR_bicubic", "X2")
-val_x3 = os.path.join("DIV2K_valid_LR_bicubic-2", "X3")
-val_x4 = os.path.join("DIV2K_valid_LR_bicubic-3", "X4")
+
+tr_x2 = "DIV2K_train_LR_bicubic"
+tr_x3 = "DIV2K_train_LR_bicubic-2"
+tr_x4 = "DIV2K_train_LR_bicubic-3"
+val_x2 = "DIV2K_valid_LR_bicubic"
+val_x3 = "DIV2K_valid_LR_bicubic-2"
+val_x4 = "DIV2K_valid_LR_bicubic-3"
+
+# tr_x2 = os.path.join("DIV2K_train_LR_bicubic", "X2")
+# tr_x3 = os.path.join("DIV2K_train_LR_bicubic-2", "X3")
+# tr_x4 = os.path.join("DIV2K_train_LR_bicubic-3", "X4")
+# val_x2 = os.path.join("DIV2K_valid_LR_bicubic", "X2")
+# val_x3 = os.path.join("DIV2K_valid_LR_bicubic-2", "X3")
+# val_x4 = os.path.join("DIV2K_valid_LR_bicubic-3", "X4")
 
 # Repeat Dataset
 r_train = 20
@@ -69,7 +77,7 @@ def load_div2k(repeat, scale=None):
         if repeat == Dt.TR.value:
             # load HR train
             data_dir = os.path.join(root, tr_hr)
-            start, end = 0, 1 # 800
+            start, end = 0, 1 # 800, 900
         else:
             # load HR valid
             data_dir = os.path.join(root, val_hr)
@@ -106,6 +114,8 @@ def load_div2k(repeat, scale=None):
         images.append(transforms.ToTensor()(Image.open(fname).convert('RGB')))
 
     return images
+
+    
 
 # old version
 # def latent_coord(img_size, ran=[-1, 1], flatten=True):

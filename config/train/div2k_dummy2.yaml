@@ -7,9 +7,10 @@ datasets:
 
 model: 
   type: metasr
-  encoder: 
-    type: rdn
-    args: 
-      no_upsample: True
-  mlp_decoder: 
-    out_dim: 3
+  args:
+    encoder: 
+      type: rdn
+      args: 
+        no_upsample: True
+    mlp_decoder: 
+      out_dim: 3

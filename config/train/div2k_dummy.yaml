@@ -13,7 +13,8 @@ datasets:
 
 model:
   type: baseline
-  encoder: 
-    type: edsr
-    args:
-      scale: 2
+  args:
+    encoder: 
+      type: edsr
+      args:
+        scale: 2

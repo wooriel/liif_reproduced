@@ -95,7 +95,7 @@ class EDSR(nn.Module):
 
         if self.no_upsample == False:
             for j, name in enumerate(self.up):
-                x = self.up[i](x)
+                x = self.up[j](x)
             x = self.convl(x)
             
         return x

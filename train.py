@@ -176,7 +176,7 @@ def train_val(dt, dv, model, type, device, save_place, cp=None):
             # in case of 'baseline'
             pred = ''
             if type == 'baseline':
-                pred = model(low_res, data[1])
+                pred = model(low_res, data[1], data[2])
             elif type == 'liif':
                 pred = model(low_res, data[1], data[2], device)
 
@@ -246,7 +246,7 @@ def train_val(dt, dv, model, type, device, save_place, cp=None):
                 # cell information not needed
                 pred = ''
                 if type == 'baseline':
-                    pred = model(low_res, data[1])
+                    pred = model(low_res, data[1], data[2])
                 elif type == 'liif':
                     pred = model(low_res, data[1], data[2], device)
 
