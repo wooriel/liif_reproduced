@@ -12,9 +12,10 @@ def load_model(type, encod, decod, ablation):
     encod_type = encod.get('type')
     encod_args = encod.get('args', None)
     encoder_fun = ''
+    features=64 # just pulled out to use to calculate channel for liif
     if encod_type == 'edsr':
         resblocks=16
-        features=64
+        # features=64
         res_s=1
         s=2
         no_up=False
@@ -44,11 +45,12 @@ def load_model(type, encod, decod, ablation):
         use_cd = 'no_cd' not in ablation
         cont_rep = liif.LIIF(encoder_fun, use_fu, use_le, use_cd)
         if decod:
+            ablation = [use_fu, use_le, use_cd]
             if decod is not True:
                 hidden_lst = decod.get('hidden_lst', None)
-                return mlp.MLP(cont_rep, use_le, hidden_lst)
-            return mlp.MLP(cont_rep, use_le)
-        return cont_rep
+                return mlp.MLP(cont_rep, features, ablation, hidden_lst)
+            return mlp.MLP(cont_rep, features, ablation)
+        return cont_rep[0] # no case falls here / need to change channel
     elif type == 'metasr':
         return
     else:

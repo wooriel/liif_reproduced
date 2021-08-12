@@ -4,20 +4,17 @@ datasets:
   dataset:
     status: train
     args:
-      min_max: 4
+      scale: 2
       
   dataset2:
     status: validation
     args:
-      min_max: 4
+      scale: 2
 
 model:
-  type: liif
-  args: 
+  type: baseline
+  args:
     encoder: 
       type: edsr
-      args: 
-        no_upsample: True
-    mlp_decoder: True
-    ablation: ['no_cd']
-  
+      args:
+        scale: 2

@@ -1,17 +1,19 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import MultiStepLR
 # used only for exstracting PIL sample images
 import math
 import torchvision.transforms as transforms
 from PIL import Image
+from tensorboardX import SummaryWriter
 
 import os
 import argparse
 import yaml
 import time
 from tqdm import tqdm
-
+import random
 
 from dataset import dataset_loader as D
 from torch.utils.data import DataLoader
@@ -20,8 +22,8 @@ from model import model_loader as M
 torch.autograd.set_detect_anomaly(True)
 
 
-batch = 1 # 16
-epoch_max = 30
+batch = 16 # 16
+# epoch_max = 31
 
 
 def train_range(sub=0.5, div=0.5):
@@ -62,16 +64,23 @@ def tensor_to_sample_image(sample, toimg=True):
 
     # change the pred tensor
     sample = sample.div(rdiv).add(radd)
-    sample = sample.transpose(1, 2)
-    square = int(math.sqrt(sample.size(2)))
-    sample = sample.view(1, 3, square, square).squeeze(0)
+    # sample = sample.transpose(-2, -1)
+    sample_sz = sample.size() # B, 2304, 3
+    square = int(math.sqrt(sample.size(-2)))
+    sample = sample.transpose(-2, -1).view(batch, 3, square, square).squeeze(0)
     # convert to PIL image after detach
     if toimg:
         to_pil = transforms.ToPILImage()
-        sample_image = to_pil(sample.detach().cpu())
+        sample_sz = sample.size()
+        # index = random.randrange(0, 48)
+        sample_image = to_pil(sample[random.randrange(0, 16)].detach().cpu())
         return sample_image
     else:
         return sample
+
+
+def order_tensor_sample(sample):
+    to_order = sample.clone()
 
 
 def calculate_psnr(sample, gt):
@@ -91,6 +100,15 @@ def config_to_save_name(string_name):
     string_name = string_name.replace(".yaml", "")
     return string_name
 
+
+def write_log(stuff, log_file_name):
+    if log_file_name is not None:
+        # 'a' adding
+        with open(log_file_name, 'a') as f:
+            f.write(stuff)
+        f.close()
+
+
 # borrowed code to check layers
 def hook_fn(m, i, o):
 
@@ -109,14 +127,42 @@ def hook_fn(m, i, o):
             print(grad)
             if isinstance(m, nn.BatchNorm1d):
                 print("running_mean:", m.running_mean,"var:", m.running_var, "b:", m.num_batches_tracked)
- 
+
+
+def get_tensor_info(tensor):
+  info = []
+  for name in ['requires_grad', 'is_leaf', 'grad_fn', 'grad']:
+    info.append(f'{name}({getattr(tensor, name)})')
+  info.append(f'tensor({str(tensor)})')
+  return ' '.join(info)
+
 
 def train_val(dt, dv, model, type, device, save_place, cp=None):
     criternion = nn.L1Loss()
     # m_params = list(model.parameters())
     # print (m_params)
     
+    # lr need to be decay after 100 epoch by a factor of 0.1
     optimizer = optim.Adam(params=model.parameters(), lr=1e-4)
+    # lr_step / epoch setting
+    milestone_lst = [200, 400, 600, 800]
+    gamma = 0.5
+    epoch_max = 1000
+
+    # sample saving name
+    freq = 50 # how often save the epoch and image
+    amount = epoch_max / freq
+    AM = epoch_max / freq
+    if type == 'celeb':
+        milestone_lst = [100]
+        gamma = 0.1
+        epoch_max = 200
+    scheduler = MultiStepLR(optimizer, milestones=milestone_lst, gamma=gamma)
+
+    # log and tensorboardX
+    log_file_path = os.path.join(save_place, 'log.txt')
+    writer = SummaryWriter(os.path.join(save_place, 'tensorboard'))
+    
     lsub, ldiv = train_range()
     gsub, gdiv = train_range()
     lsub = lsub.to(device)
@@ -139,36 +185,26 @@ def train_val(dt, dv, model, type, device, save_place, cp=None):
                 state[k] = v.to(device)
 
     min_val_loss = None
-    name_index = 10
-    NI = 10
-    amount = 30
-    AM = 30
+    amount = epoch_max / freq
+    AM = epoch_max / freq
     for epoch in range(epoch_start + 1, epoch_max + 1):
         train_start_time = time.time()
+        writer.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
 
         train_loss = 0
         min_loss = None
         best_epoch = 0
         save_best_contents = None
         tcount = 0
+        curr_rh = 0
+        prev_rh = 0
         for i, data in tqdm(enumerate(dt)):
             # data is a list of (lr_crop, hr_coord, cell, gt = hr_rgb)
-            # data.to(device)
-            # print(data)
-            # print(data[0].size())
-            # print(data[1].size())
-            # print(data[2].size())
-            # print(data[3].size())
             data[0] = data[0].to(device)
             data[1] = data[1].to(device)
-            data1_size = data[1].size()
-            data[2] = data[2].to(device)
-            data2_size = data[2].size()
-            data[3] = data[3].to(device)
-            data3_size = data[3].size()
-            data[1] = data[1].to(device)
             data[2] = data[2].to(device)
             data[3] = data[3].to(device)
+            
 
             # input data
             low_res = data[0].sub(lsub).div(ldiv)
@@ -183,11 +219,16 @@ def train_val(dt, dv, model, type, device, save_place, cp=None):
             # ground truth data
             gt = data[3].sub(gsub).div(gdiv)
 
+            optimizer.zero_grad()
+
             loss = criternion(pred, gt)
             train_loss += loss.item()
-
-            optimizer.zero_grad()
+            writer.add_scalars('loss', {'train': train_loss}, epoch)
+            # print('loss', get_tensor_info(loss))
+            # loss.retain_grad() 
+            # print(loss)
             loss.backward()
+            # print('loss_after_backward', get_tensor_info(loss))   
             optimizer.step()
 
             if min_loss == None or min_loss > loss:
@@ -200,7 +241,7 @@ def train_val(dt, dv, model, type, device, save_place, cp=None):
                 )
             tcount += 1
 
-            if epoch % 1 == 0:
+            if epoch % freq == 0: # epoch % 1 for toy dataset / freq
                 save_contents = dict(
                     avg_loss=train_loss/tcount,
                     epoch=epoch,
@@ -210,9 +251,13 @@ def train_val(dt, dv, model, type, device, save_place, cp=None):
                 save_num = 'epoch-%d.pth' % epoch
                 torch.save(save_contents, os.path.join(save_place, save_num))
 
+        scheduler.step()
+
         batch_time = time.time()-train_start_time
-        print("Epoch [{}/{}]: average train loss={}, count={} time={}".format(epoch, epoch_max, train_loss/tcount, tcount, batch_time))
-    
+        to_write = "Epoch [{}/{}]: average train loss={}, count={} time={}\n".format(epoch, epoch_max, train_loss/tcount, tcount, batch_time)
+        print(to_write)
+        write_log(to_write, log_file_path)
+
         # for each epoch, log'
         # change this into 10 or 100 later
         save_contents = dict(
@@ -228,7 +273,9 @@ def train_val(dt, dv, model, type, device, save_place, cp=None):
         save_best = 'epoch-best.pth'
         torch.save(save_best_contents, os.path.join(save_place, save_best))
 
-        once = True
+        once = False
+        if epoch % 10 == 0:
+            once = True
         with torch.no_grad():
             val_start_time = time.time()
             val_loss = 0
@@ -257,23 +304,29 @@ def train_val(dt, dv, model, type, device, save_place, cp=None):
                 if amount > 0 and once:
                     once = False
                     amount -= 1
+                    # if type == 'liif':
+                    #     # something that changes the output into ordered sampled images
+                    #     ord_image = order_tensor_sample(pred)
                     sample_image = tensor_to_sample_image(pred)
-                    file_name = "{}.jpg".format(str(NI-name_index)+"-"+str(AM-amount))
+                    file_name = "{}.jpg".format(str(AM-amount)) # str(NI-name_index)+"-"+
                     sample_image_path = os.path.join(save_name, file_name)
                     sample_image.save(sample_image_path)
 
                     gt_image = tensor_to_sample_image(gt)
-                    gt_file_name = "gt{}.jpg".format(str(NI-name_index)+"-"+str(AM-amount))
+                    gt_file_name = "gt{}.jpg".format(str(AM-amount)) #  str(NI-name_index)+"-"+
                     gt_image_path = os.path.join(save_name, gt_file_name)
                     gt_image.save(gt_image_path)
 
                 
                 loss = criternion(pred, gt)
+                # print(loss)
                 val_loss += loss.item()
+                writer.add_scalars('loss', {'train': val_loss}, epoch)
                 vcount += 1
 
                 # calculate the psnr value (MSE)
                 val_psnr += calculate_psnr(pred, gt)
+                writer.add_scalars('psnr', {'val': val_psnr}, epoch)
                 # later log the psnr value
 
             # record the best test loss
@@ -283,14 +336,18 @@ def train_val(dt, dv, model, type, device, save_place, cp=None):
                 min_val_loss = val_loss/vcount
 
             val_time = time.time() - val_start_time
-            print("Epoch [{}/{}]: average validation loss={}, avg_psnr={}, count={}, time={}".format(epoch, epoch_max, val_loss/vcount, val_psnr/vcount, vcount, val_time))
+            to_write = "Epoch [{}/{}]: average validation loss={}, avg_psnr={}, count={}, time={}\n".format(epoch, epoch_max, val_loss/vcount, val_psnr/vcount, vcount, val_time)
+            print(to_write)
 
-    print("Final best validation loss: {}".format(min_val_loss))
+    to_write = "Final best validation loss: {}\n".format(min_val_loss)
+    print(to_write)
+    write_log(to_write, log_file_path)
+    writer.flush()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="instruction for loading dataset and model. Default example:\
         python train.py --config ...")
-    parser.add_argument("--train", type=str, default="train", help="Flag for train or test")
+    parser.add_argument("--train", type=str, default=True, help="Flag for train or test")
     parser.add_argument("--config", type=str, default="", help="Write a code for specific test")
     parser.add_argument("--model", type=str, help="If there is saved training, wrote the path of config file of that model")
     parser.add_argument("--gpu", type=int, default=0, help="Type the number of GPU that you will use")
@@ -305,15 +362,20 @@ if __name__ == "__main__":
     train_dataset, val_dataset = D.read_yaml(loaded_yaml)
 
     # batch_size=16
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True) # num_worker=2
-    val_loader = DataLoader(val_dataset, batch_size=1)
+    train_loader = DataLoader(train_dataset, batch_size=batch, shuffle=True, num_workers=2, pin_memory=True) # num_worker=2 # 16
+    val_loader = DataLoader(val_dataset, batch_size=batch) # 16
 
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
     cuda_type = ''.join(['cuda:', str(args.gpu)])
     device = cuda_type if torch.cuda.is_available() else 'cpu'
     model = M.read_yaml(loaded_yaml)
     # model.to(device)
     model_dic = loaded_yaml['model']
     model_type = model_dic['type']
+
+    n_gpus = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
+    if n_gpus > 1:
+        model = nn.parallel.DataParallel(model)
 
     if args.model is not None:
         # load epoch, last_epoch etc
@@ -333,4 +395,5 @@ if __name__ == "__main__":
         train_val(train_loader, val_loader, model, model_type, device, save_name, checkpoint)
     else:
         train_val(train_loader, val_loader, model, model_type, device, save_name)
+
 

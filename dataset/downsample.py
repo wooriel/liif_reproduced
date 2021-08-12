@@ -50,10 +50,10 @@ def augment_tensor(t, flip):
     trans = ''
     if flip[0]:
         trans += 'lr '
-        t = t.fliplr()
+        t = t.flip(2)
     if flip[1]:
         trans += 'hb '
-        t = t.flipud()
+        t = t.flip(1)
     if flip[2]: # Use ROTATE_90 instead?
         trans += 'trans '
         # I fixed transpose(0, 1) to transpose(1, 2)

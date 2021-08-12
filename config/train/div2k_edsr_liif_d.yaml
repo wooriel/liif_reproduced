@@ -18,5 +18,5 @@ model:
       type: edsr
       args: 
         no_upsample: True
-    mlp_decoder:
+    mlp_decoder: True
       hidden_lst: [256, 256]

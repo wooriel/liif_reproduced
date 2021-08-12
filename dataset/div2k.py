@@ -77,7 +77,7 @@ def load_div2k(repeat, scale=None):
         if repeat == Dt.TR.value:
             # load HR train
             data_dir = os.path.join(root, tr_hr)
-            start, end = 0, 1 # 800, 900
+            start, end = 0, 800 # 0, 800
         else:
             # load HR valid
             data_dir = os.path.join(root, val_hr)
@@ -87,7 +87,7 @@ def load_div2k(repeat, scale=None):
         assert scale in (2, 3, 4), "The value of \'scale\' should be one of 2, 3, 4"
         sub_name = ''.join(['x', str(scale)])
         if repeat == Dt.TR.value:
-            start, end = 0, 1 # 800
+            start, end = 0, 800 # 0, 800
             if scale == 2:
                 data_dir = os.path.join(root, tr_x2)
             elif scale == 3:

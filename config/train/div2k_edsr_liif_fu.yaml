@@ -18,6 +18,6 @@ model:
       type: edsr
       args: 
         no_upsample: True
-    mlp_decoder: 
+    mlp_decoder: True
     ablation: ['no_fu']
   

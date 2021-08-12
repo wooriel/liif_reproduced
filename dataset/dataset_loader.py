@@ -30,7 +30,7 @@ def read_yaml(yaml_file):
     # load first dataset
     d1 = dset['dataset']
     datatype1 = load_dset(type, d1)
-    d2 = dset['dataset2']
+    d2 = dset.get('dataset2', None)
     datatype2 = d2
     if d2 is not None:
         datatype2 = load_dset(type, d2)

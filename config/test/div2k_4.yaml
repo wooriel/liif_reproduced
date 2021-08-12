@@ -1,0 +1,7 @@
+datasets:
+  type: 'div2k'
+
+  dataset:
+    status: 'test'
+    args:
+      scale: 4
